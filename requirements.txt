@@ -1,0 +1,19 @@
+streamlit
+git+https://github.com/streamlit/gsheets-connection
+pandasql  # this is for example/st_app.py only
+gspread
+oauth2client
+st-gsheets-connection
+langchain-groq
+langchain
+langgraph
+langsmith
+langchain-openai
+langchain-google-genai
+langchain-community
+pypdf2
+docx
+python-docx
+
+arcade_google
+google-api-python-client
