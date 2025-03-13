@@ -7,7 +7,6 @@ from arcadepy import Arcade
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from utils import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
-import json
 from prompt import draft_template, revise_template
 import os
 
@@ -181,24 +180,7 @@ def get_workflow():
     workflow.add_node("create_draft", draft_node)
     workflow.add_node("revise_draft", revise_node)
     workflow.add_node("update_google_doc", update_google_doc_node)
-    
-    def set_entry_point(state):
-       
-        if state.confirmed:
-            if state.draft:
-                # If we have a confirmed draft, go straight to send_email
-                return "update_google_doc"
-            else:
-                # If confirmed but no draft, create one first
-                return "create_draft"
-        elif state.feedback and state.draft:
-            # If we have feedback and a draft, go to revise
-            return "revise_draft"
-        else:
-            # Default: create a draft
-            return "create_draft"
-    
-    # Set a fixed entry point instead of a dynamic function
+     
     workflow.set_entry_point("create_draft")
     
     # Modify conditional edges with better state tracking
