@@ -1,13 +1,13 @@
 import streamlit as st
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI 
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
 from arcadepy import Arcade
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from utils import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
-from prompt import draft_template, revise_template
+from github import Auth
+from prompt import draft_template
+from repository import get_repo_python_files_content
 import os
 
 # Set API keys from Streamlit secrets
@@ -16,72 +16,92 @@ os.environ["ARCADE_API_KEY"] = st.secrets["general"]["ARCADE_API_KEY"]
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["tracing"]["LANGCHAIN_API_KEY"]
 os.environ["LANGCHAIN_ENDPOINT"]="https://api.smith.langchain.com"
-os.environ["LANGCHAIN_PROJECT"] = "Client Success Story Teller"
+os.environ["LANGCHAIN_PROJECT"] = "PRD Writer"
+
+
+# Constants
+GEMINI_2_0_FLASH = "gemini-2.0-flash"
+REPO_OWNER = "Terresapan"
+REPO_NAME = "groupdebating"
+REPO_PATH = "" 
+RECURSIVE_SEARCH = False
+DOUCUMENT_ID = "1YImcxcZ0zG2-cV7oubxBYvwob_IIEf2I4ZuwJrT4yqs" 
 
 
 # Define the state model
 class State(BaseModel):
-    project_desc: str = ""
-    case_study: str = ""
-    additional_text: str = ""
-    draft: str = ""
-    feedback: str | None = None
-    confirmed: bool = False
+    reponame: str = ""
+    owner: str = ""
+    document_id: str = ""
+    repocontent: str = ""
+    pdr: str = ""
+    save_to_doc: bool = False
+
+# initiate Arcade client
+client = Arcade(api_key=os.environ["ARCADE_API_KEY"])
+
+# Define LLM
+def get_llm(model=GEMINI_2_0_FLASH, temperature=0):
+    """Initialize and return the LLM based on the specified model."""    
+    return ChatGoogleGenerativeAI(
+        model=GEMINI_2_0_FLASH,
+        temperature=temperature,
+        api_key=os.environ["GOOGLE_API_KEY"]
+    )
 
 
-def process_inputs(project_desc, case_study, additional_text, confirmed=False):
-    # Process uploaded files
-    def extract_text(uploaded_file):
-        """Extract text from the uploaded file."""
-        file_text = ""
-        if uploaded_file.type == "application/pdf":
-            file_text = extract_text_from_pdf(uploaded_file)
-        elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            file_text = extract_text_from_docx(uploaded_file)
-        elif uploaded_file.type == "text/plain":
-            file_text = extract_text_from_txt(uploaded_file)
+def get_code_content(state: State):
+    """Fetch repository content using Arcade GitHub tool."""
+    auth = Auth.Token(os.environ["GITHUB_TOKEN"])
+    combined_code = get_repo_python_files_content(
+        token_auth=auth,
+        owner=REPO_OWNER,
+        repo_name=REPO_NAME,
+        path=REPO_PATH,
+        recursive=RECURSIVE_SEARCH
+    )
+
+    if combined_code is not None:
+        if combined_code:
+            # print("\n--- Combined Python Code ---")
+            # Only print the start for brevity if it's very long
+            # print(combined_code[:2000] + ('...' if len(combined_code) > 2000 else ''))
+            state.repocontent = combined_code
+            # print("\n--- End of Combined Code ---")
         else:
-            st.error("❌ Unsupported file type")
-        return file_text
+            print("No Python code was extracted.")
+    else:
+        print("Script failed.") # Error messages were printed earlier
 
-   
-    return State(
-        project_desc=extract_text(project_desc),
-        case_study=extract_text(case_study),
-        additional_text=additional_text,
-        confirmed=confirmed
-    )
+    return state
 
-def get_workflow():
-    """Create and return the workflow with improved state handling."""
-    # Define LLM
-    llm = ChatGoogleGenerativeAI (
-        model="gemini-2.0-flash", 
-        temperature=0,
-        api_key=os.environ["GOOGLE_API_KEY"] 
-    )
+def draft_prd(state: State):
+    try:
+        llm = get_llm(temperature=0)
+        if not state.repocontent:
+            st.warning("Repository content is empty, cannot draft PRD.")
+            state.pdr = "Error: Could not fetch repository content."
+            return state
 
-    # Define nodes
-    def draft_node(state):
-        prompt = ChatPromptTemplate.from_template(draft_template)
-        chain = prompt | llm
-        return {"draft": chain.invoke({
-            "project_desc": state.project_desc,
-            "case_study": state.case_study,
-            "additional_text": state.additional_text
-        }).content}
+        prompt = draft_template.format(codebase=state.repocontent)
+        result = llm.invoke(prompt)
 
-    def revise_node(state):
-        prompt = ChatPromptTemplate.from_template(revise_template)
-        chain = prompt | llm
-        return {"draft": chain.invoke({
-                "feedback": state.feedback,
-                "draft": state.draft
-            }).content}
-    
-    def update_google_doc_node(state):
-        """Node to update Google Doc with the final draft."""
+        # Assign to pdr, not repocontent
+        state.pdr = result.content # Assuming content is AIMessage with .content attribute
+
+    except Exception as e:
+        st.error(f"Error drafting prd: {e}")
+        state.pdr = f"Error generating PRD: {e}" # Set error message in pdr
+    return state
+
+
+def update_google_doc_node(state: State):
+        """Node to update Google Doc with the final PRD."""
         try:
+            # Debug information
+            # print("Debug - update_google_doc_node - PRD Length:", len(state.pdr) if state.pdr else 0)
+            # print("Debug - update_google_doc_node - Document ID:", state.document_id)
+            
             client = Arcade(api_key=os.environ["ARCADE_API_KEY"])
             USER_ID = "terresap2010@gmail.com"
             
@@ -107,16 +127,15 @@ def get_workflow():
             
             if not token:
                 st.error("No token found in auth response")
-                return {"draft": state.draft}
+                return {"draft": state.pdr}
 
             # Build the credentials and Docs client
             credentials = Credentials(token)
             google_doc = build("docs", "v1", credentials=credentials)
-            document_id = "1YImcxcZ0zG2-cV7oubxBYvwob_IIEf2I4ZuwJrT4yqs"
             
             # Get document to find the end
             try:
-                document = google_doc.documents().get(documentId=document_id).execute()
+                document = google_doc.documents().get(documentId=state.document_id).execute()
                 # Get the document's content end index
                 content = document.get("body", {}).get("content", [])
                 if content:
@@ -131,13 +150,19 @@ def get_workflow():
                     {
                         "insertText": {
                             "location": {"index": end_index - 1},
-                            "text": "\n\n" + state.draft,  # Add newlines for separation
+                            "text": "\n\n" + state.pdr,  # Add newlines for separation
                         }
                     }
                 ]
+                # Debug the request
+                # print("Debug - Google Doc Update Request:", {
+                #     "documentId": state.document_id,
+                #     "text_length": len(state.pdr) if state.pdr else 0,
+                #     "insert_at_index": end_index - 1
+                # })
                 
                 google_doc.documents().batchUpdate(
-                    documentId=document_id, 
+                    documentId=state.document_id,
                     body={"requests": requests}
                 ).execute()
                 
@@ -150,58 +175,76 @@ def get_workflow():
                     {
                         "insertText": {
                             "location": {"index": 1},
-                            "text": state.draft + "\n\n",
+                            "text": state.pdr + "\n\n",
                         }
                     }
                 ]
                 
                 google_doc.documents().batchUpdate(
-                    documentId=document_id, 
+                    documentId=state.document_id,
                     body={"requests": requests}
                 ).execute()
                 
                 st.success("✅ Case study added to Google Doc (at beginning)!")
             
-            return {"draft": state.draft}
+            return {"pdr": state.pdr}
             
         except Exception as e:
             st.error(f"❌ Error updating Google Doc: {str(e)}")
             import traceback
-            st.write(traceback.format_exc())
-            return {"draft": state.draft}
+            print(traceback.format_exc())
+            return {"pdr": state.pdr}
 
 
-       
-           
+# Function to decide whether to update the Google Doc
+def should_save_to_doc(state: State):
+    """Conditional edge logic: route to update_google_doc or end."""
+    if state.save_to_doc:
+        # Debug information
+        # print("Debug - should_save_to_doc - Routing to update_google_doc")
+        # print("Debug - should_save_to_doc - PRD Length:", len(state.pdr) if state.pdr else 0)
+        return "update_google_doc"
+    else:
+        print("Debug - should_save_to_doc - Routing to END")
+        return END
 
+
+def get_workflow():
+    """Create and return the workflow with improved state handling."""
+    
     # Define workflow
     workflow = StateGraph(State)
     
-    workflow.add_node("create_draft", draft_node)
-    workflow.add_node("revise_draft", revise_node)
+    workflow.add_node("get_code_content", get_code_content)
+    workflow.add_node("draft_prd", draft_prd)
     workflow.add_node("update_google_doc", update_google_doc_node)
-     
-    workflow.set_entry_point("create_draft")
-    
-    # Modify conditional edges with better state tracking
-    def after_create_draft(state):
-        # print(f"After create_draft state: {state}")
-        if state.confirmed and state.draft:
-            return "update_google_doc"
-        elif state.feedback:
-            return "revise_draft"
-        else:
-            return END
 
-    def after_revise_draft(state):
-        # print(f"After revise_draft state: {state}")
-        if state.confirmed:
+    # Determine entry point based on state
+    def get_entry_point(state: State):
+        if state.save_to_doc and state.pdr:
+            # If we already have a PRD and want to save it, start from update_google_doc
+            # print("Debug - Workflow Entry Point: update_google_doc (direct save)")
             return "update_google_doc"
         else:
-            return END
-
-    workflow.add_conditional_edges("create_draft", after_create_draft)
-    workflow.add_conditional_edges("revise_draft", after_revise_draft)
-    workflow.add_edge("update_google_doc", END)
+            # Otherwise, start from the beginning
+            # print("Debug - Workflow Entry Point: get_code_content (normal flow)")
+            return "get_code_content"
     
+    # Set conditional entry point
+    workflow.set_conditional_entry_point(get_entry_point)
+
+    workflow.add_edge("get_code_content", "draft_prd")
+
+    # Conditional edge after drafting PRD
+    workflow.add_conditional_edges(
+        "draft_prd",
+        should_save_to_doc, # Function to decide the next step
+        {
+            "update_google_doc": "update_google_doc", # If should_save_to_doc returns "update_google_doc"
+            END: END # If should_save_to_doc returns END
+        }
+    )
+
+    workflow.add_edge("update_google_doc", END) # End after updating doc
+
     return workflow.compile()

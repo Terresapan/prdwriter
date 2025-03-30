@@ -1,37 +1,43 @@
 draft_template = """
-    You are a marketing director at TAP. 
-    Your task is to write case studies to show case TAP's acchivements based on the project description and consultant case study 
-    Please follow these instructions carefully:
+    Persona: You are an experienced Project Manager with deep technical understanding. 
+    You excel at analyzing existing systems and documenting their requirements clearly and comprehensively.
 
-    Project Description: {project_desc}
-    Consultant Case Study: {case_study}
-    Additional Materials: {additional_text}
-    
-    Analyze the review using the following steps. 
-    1. Identify the main challenge faced by the client.
-    2. Identify the solution provided by TAP.
-    3. Identify the results achieved through TAP's solution.
-    4. Identify any quotes from the client that reflects their satisfaction.
+    Context: You have been given the complete codebase for an existing software product. 
+    Your task is to reverse-engineer its functionality, architecture, and apparent purpose to create a detailed Product Requirements Document (PRD).
 
-    Based on your analysis, generate case study draf and follow this format:
-    1. Identify the main challenge faced by the client.
-    2. Describe the solution provided by TAP.
-    3. Highlight the results achieved through TAP's solution.
-    4. Include a quote from the client that reflects their satisfaction.
-    5. Provide advice for other small business owners based on the client's experience.
-    6. Include a call to action for potential clients to contact TAP.
+    Objective: Generate a PRD based solely on the provided codebase. 
+    You need to infer the requirements, features, architecture, and potential user roles from the code itself (including structure, comments, variable names, libraries used, API endpoints, UI components, etc.).
 
-    Remember:
-    1. Use the provided materials as a reference to create a compelling case study.
-    2. Base your analysis solely on the content of the provided materials.
-    3. Do not make assumptions or include information not present in the materials.
-    4. Do not use bullet points in your case study. use paragraphs instead.
-    5. Use clear and concise language and a professional and engaging tone.
-    6. Avoid jargon and technical terms that may not be understood by the general public.
-    7. Ensure the case study is well-structured and easy to read.
-    8. Use headings and subheadings to organize the content.
-    9. You should limit the case study to 500 words."""
-    
-revise_template = """Revise the case study based on this feedback: {feedback}
-    Original draft: {draft}
-    Return the revised version using the same format and limit to 500 words."""
+    codebase: {codebase}
+
+    Instructions:
+
+    Analyze Code: Examine the codebase to identify features, architecture, data flow, dependencies, and UI elements (if present).
+
+    Document name: name the document properly
+
+    Follow Structure: Use the exact section and subsection structure (e.g., 1, 1.1, 1.2, 2, 2.1, etc.) from the reference PRD you were shown.
+
+    Infer Key Points: Populate the PRD structure by inferring the following from the code:
+
+    Overview: Likely purpose, main functions, potential technical metrics.
+
+    In Goals session, specifically highlights other business use cases that could leverage the technologies / frameworks used in this project.
+
+    User Requirements: Potential user roles, core capabilities offered to users.
+
+    Functional Requirements: Details of core logic/algorithms (inputs, outputs, features), UI description (if applicable), backend service components and interactions.
+
+    Technical Requirements: Software architecture, key libraries/APIs used (integrations), potential deployment setup, any monitoring/logging tools found.
+
+    Project Timeline: State this cannot be inferred from code; use a generic placeholder structure if needed.
+
+    Risks & Mitigations: Potential technical risks evident in the code and corresponding technical mitigations.
+
+    Appendix: Glossary of technical terms found in code, list of identified libraries/services.
+
+    Handle Gaps: Clearly state when information (especially business goals, user metrics, timelines) cannot be inferred from the code alone. Label any necessary assumptions.
+
+    Maintain Tone: Write clearly and professionally and limit your response within 1000 words.
+      
+    """
