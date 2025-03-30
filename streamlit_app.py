@@ -15,7 +15,7 @@ def setup_sidebar():
 
     st.sidebar.write("### Instructions")
     st.sidebar.write(
-        "1. :octocat: Enter the GitHub repository name (ensure Arcade has access).\n"
+        "1. :heart_eyes_cat: Enter the GitHub repository name (ensure Arcade has access).\n"
         "2. :writing_hand: Generate the PRD draft.\n"
         "3. :eyes: Review the draft.\n"
         "4. :floppy_disk: Save the final PRD to your Google Doc.\n"
